@@ -1,0 +1,17 @@
+[profile.default]
+ffi = true
+libs = ['lib']
+optimizer_runs = 10000
+out = 'out'
+solc_version = '0.8.19'
+src = 'src'
+viaIR = true
+
+[etherscan]
+goerli = {key = "${ETHERSCAN_KEY}", url = "https://api-goerli.etherscan.io/api"}
+mainnet = {key = "${ETHERSCAN_KEY}"}
+
+[fmt]
+bracket_spacing = true
+line_length = 100
+tab_width = 2

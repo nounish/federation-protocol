@@ -1,0 +1,48 @@
+{
+  "name": "@relicprotocol/types",
+  "version": "0.0.8",
+  "description": "Typings for Relic Protocol SDK",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.es.js",
+  "unpkg": "dist/index.umd.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf *.tsbuildinfo;",
+    "build:pre": "npm run clean; rm -rf dist;",
+    "build:types": "tsc",
+    "build:source": "rollup --config rollup.config.mjs",
+    "build": "npm run clean; npm run build:pre; npm run build:source && npm run build:types; npm run clean;",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "relic",
+    "reliquary",
+    "client",
+    "sdk",
+    "historical",
+    "state",
+    "query"
+  ],
+  "homepage": "https://docs.relicprotocol.com/",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Relic-Protocol/relic-sdk"
+  },
+  "dependencies": {
+    "ethers": "^5.7.2"
+  },
+  "typedoc": {
+    "entryPoint": "src/index.ts"
+  }
+}

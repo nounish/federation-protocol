@@ -1,0 +1,9 @@
+ds-test/=lib/forge-std/lib/ds-test/src/
+forge-std/=lib/forge-std/src/
+solady/=lib/solady/src/
+delegate-cash/=lib/delegation-registry/src
+nouns-contracts/=lib/nouns-monorepo/packages/nouns-contracts/contracts/
+openzeppelin/=lib/openzeppelin-contracts/contracts/
+openzeppelin-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/

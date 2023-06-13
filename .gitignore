@@ -1,0 +1,19 @@
+# Compiler files
+cache/
+out/
+cache_hardhat/
+artifacts/
+.DS_Store
+
+# Ignores development broadcast logs
+broadcast/
+tmp/
+*.log
+
+
+# Dotenv file
+.env
+
+# Editor files
+.vscode
+node_modules

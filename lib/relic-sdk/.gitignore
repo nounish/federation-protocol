@@ -1,0 +1,15 @@
+node_modules
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+
+packages/*/build
+packages/*/dist
+
+packages/contracts/abi
+
+# Hardhat files
+cache
+artifacts

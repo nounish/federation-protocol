@@ -1,0 +1,32 @@
+{
+  "version": "1",
+  "name": "NounsGovernancePool",
+  "abis": {
+    "Factory": {
+      "path": "../abi/governance-pool/nounsFactory.json"
+    },
+    "Pool": {
+      "path": "../abi/governance-pool/nouns.json"
+    }
+  },
+  "chains": ["sepolia"],
+  "instances": [
+    {
+      "abi": "Factory",
+      "address": "0x76Eb7124Ad0D1188f06307280FE08a6F60756f28",
+      "startBlock": 3492120,
+      "chain": "sepolia"
+    },
+    {
+      "abi": "Pool",
+      "chain": "sepolia",
+      "address": "0xd27dfb807DC3435AC3e14b55FcF1B50F96fF769a",
+      "startBlock": 3492120,
+      "source": {
+        "abi": "Factory",
+        "eventSignature": "Created(address)",
+        "addressParam": "addr"
+      }
+    }
+  ]
+}
