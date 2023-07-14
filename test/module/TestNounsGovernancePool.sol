@@ -15,6 +15,7 @@ import {
   TestEnv,
   NOUNS_GOVERNOR,
   NOUNS_TOKEN,
+  NOUNS_EXECUTOR,
   DELEGATE_CASH,
   RELIQUARY,
   SLOT_INDEX_TOKEN_BALANCE,
@@ -36,6 +37,7 @@ import { Fact } from "relic-sdk/packages/contracts/lib/Facts.sol";
 import { FactSigs } from "relic-sdk/packages/contracts/lib/FactSigs.sol";
 import { Storage } from "relic-sdk/packages/contracts/lib/Storage.sol";
 import { IDelegationRegistry } from "delegate-cash/IDelegationRegistry.sol";
+import { NounsDAOExecutor } from "nouns-contracts/governance/NounsDAOExecutor.sol";
 
 pragma solidity ^0.8.19;
 
@@ -82,9 +84,10 @@ contract TestNounsGovernancePool is Test {
     baseWallet = Wallet(address(proxy));
     admin.transferOwnership(owner);
 
-    NounsFactory.PoolConfig memory fCfg =
-      NounsFactory.PoolConfig(address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5);
-    pool = NounsPool(poolFactory.clone(fCfg, 150, 0.01 ether, "hello world"));
+    NounsFactory.PoolConfig memory fCfg = NounsFactory.PoolConfig(
+      address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5, 150, 0, 0, 0.01 ether, 0
+    );
+    pool = NounsPool(poolFactory.clone(fCfg, "hello world"));
     baseWallet.setModule(address(pool), true);
 
     uint256 mainnetFork = vm.createFork(vm.envString("MAINNET_RPC_URL"));
@@ -101,9 +104,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -112,30 +116,38 @@ contract TestNounsGovernancePool is Test {
       address(0),
       address(0),
       0,
-      ""
+      "",
+      0
     );
 
     vm.expectRevert();
     pool.init(abi.encode(poolCfg));
 
     // validation checks
-    NounsFactory.PoolConfig memory fCfg =
-      NounsFactory.PoolConfig(address(baseWallet), address(0), NOUNS_TOKEN, 0.1 ether, 5);
+    NounsFactory.PoolConfig memory fCfg = NounsFactory.PoolConfig(
+      address(baseWallet), address(0), NOUNS_TOKEN, 0.1 ether, 5, 150, 0, 0, 0.01 ether, 0
+    );
 
     vm.expectRevert(GovernancePool.InitExternalDAONotSet.selector);
-    NounsPool poolTestInit = NounsPool(poolFactory.clone(fCfg, 150, 0.01 ether, ""));
+    NounsPool poolTestInit = NounsPool(poolFactory.clone(fCfg, ""));
 
-    fCfg = NounsFactory.PoolConfig(address(baseWallet), NOUNS_GOVERNOR, address(0), 0.1 ether, 5);
+    fCfg = NounsFactory.PoolConfig(
+      address(baseWallet), NOUNS_GOVERNOR, address(0), 0.1 ether, 5, 150, 0, 0, 0.01 ether, 0
+    );
     vm.expectRevert(GovernancePool.InitExternalTokenNotSet.selector);
-    poolTestInit = NounsPool(poolFactory.clone(fCfg, 150, 0.01 ether, ""));
+    poolTestInit = NounsPool(poolFactory.clone(fCfg, ""));
 
-    fCfg = NounsFactory.PoolConfig(address(0), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5);
+    fCfg = NounsFactory.PoolConfig(
+      address(0), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5, 150, 0, 0, 0.01 ether, 0
+    );
     vm.expectRevert(GovernancePool.InitBaseWalletNotSet.selector);
-    poolTestInit = NounsPool(poolFactory.clone(fCfg, 150, 0.01 ether, ""));
+    poolTestInit = NounsPool(poolFactory.clone(fCfg, ""));
 
     // castWindow should default to 150 if not set and should not revert
-    fCfg = NounsFactory.PoolConfig(address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5);
-    poolTestInit = NounsPool(poolFactory.clone(fCfg, 0, 0.01 ether, "hello world hello world"));
+    fCfg = NounsFactory.PoolConfig(
+      address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5, 0, 0, 0, 0.01 ether, 0
+    );
+    poolTestInit = NounsPool(poolFactory.clone(fCfg, "hello world hello world"));
   }
 
   function testBidPropConditions() public {
@@ -144,27 +156,28 @@ contract TestNounsGovernancePool is Test {
 
     // should revert if prop does not exist
     vm.expectRevert(bytes("NounsDAO::state: invalid proposal id"));
-    pool.bid{ value: 1 ether }(999 ether, 1);
+    pool.bid{ value: 1 ether }(999 ether, 1, "");
 
     ModuleConfig.Config memory cfg = pool.getConfig();
     assertEq(cfg.reservePrice, 0.1 ether);
+
     // should revert if prop voting period is not active
     vm.expectRevert(GovernancePool.BidProposalNotActive.selector);
-    pool.bid{ value: 1 ether }(1, 1);
+    pool.bid{ value: 1 ether }(1, 1, "");
 
     // should revert on invalid support
     vm.expectRevert(GovernancePool.BidInvalidSupport.selector);
-    pool.bid{ value: 1 ether }(latestPropId, 3);
+    pool.bid{ value: 1 ether }(latestPropId, 3, "");
 
     // should revert if reserve price not met
     vm.expectRevert(GovernancePool.BidReserveNotMet.selector);
-    pool.bid{ value: cfg.reservePrice - 0.01 ether }(latestPropId, 0);
+    pool.bid{ value: cfg.reservePrice - 0.01 ether }(latestPropId, 0, "");
   }
 
   function testCreateBid() public {
     // ensure bid is created
     vm.prank(bidder1);
-    pool.bid{ value: 1 ether }(270, 1);
+    pool.bid{ value: 1 ether }(270, 1, "");
 
     NounsGovernanceV2 nounsDAO = NounsGovernanceV2(NOUNS_GOVERNOR);
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(270);
@@ -181,11 +194,11 @@ contract TestNounsGovernancePool is Test {
 
     vm.prank(bidder2);
     vm.expectRevert(GovernancePool.BidTooLow.selector);
-    pool.bid{ value: bidAmount - 1 }(270, 0);
+    pool.bid{ value: bidAmount - 1 }(270, 0, "");
 
     vm.prank(bidder2);
     uint256 prevBalance = bidder1.balance;
-    pool.bid{ value: bidAmount }(270, 0);
+    pool.bid{ value: bidAmount }(270, 0, "");
     uint256 postBalance = bidder1.balance;
 
     // last bidder should be refunded their eth
@@ -208,10 +221,10 @@ contract TestNounsGovernancePool is Test {
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     vm.roll(pc.startBlock + 10);
-    pool.bid{ value: 1 ether }(pId, 1);
+    pool.bid{ value: 1 ether }(pId, 1, "");
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks) + 1);
     pool.castVote(pId);
 
     // cannot be cast if already executed
@@ -221,7 +234,7 @@ contract TestNounsGovernancePool is Test {
 
     // ensure no one can bid on this prop anymore since the vote has been cast
     vm.expectRevert();
-    pool.bid{ value: 2 ether }(pId, 0);
+    pool.bid{ value: 2 ether }(pId, 0, "");
     vm.roll(pc.endBlock + 10); // let prop expire
 
     // cannot be cast if voting is closed
@@ -229,12 +242,12 @@ contract TestNounsGovernancePool is Test {
     pc = nounsDAO.proposals(pId);
 
     // reverts if no bid placed but in window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.expectRevert(GovernancePool.CastVoteBidDoesNotExist.selector);
     pool.castVote(pId);
 
     // move outside the execution window
-    pool.bid{ value: 1 ether }(pId, 1);
+    pool.bid{ value: 1 ether }(pId, 1, "");
     vm.roll(pc.endBlock + 10);
 
     vm.expectRevert();
@@ -244,8 +257,8 @@ contract TestNounsGovernancePool is Test {
     pc = nounsDAO.proposals(pId);
 
     vm.roll(pc.startBlock + 10);
-    pool.bid{ value: 1 ether }(pId, 1);
-    vm.roll(pc.endBlock - cfg.castWindow);
+    pool.bid{ value: 1 ether }(pId, 1, "test");
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks) + 1);
 
     // test refunds gas and tips
     uint256 preBalance = address(tx.origin).balance;
@@ -291,18 +304,17 @@ contract TestNounsGovernancePool is Test {
     NounsGovernanceV2 nounsDAO = NounsGovernanceV2(NOUNS_GOVERNOR);
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
-    vm.roll(pc.startBlock + 10);
-
     // move into the execution window
-    uint256 blockInCastWindow = pc.endBlock - cfg.castWindow;
-    vm.roll(blockInCastWindow + 10);
+    uint256 blockInCastWindow = pc.endBlock - cfg.auctionCloseBlocks;
+    vm.roll(blockInCastWindow);
 
-    // bid, wait cast blocks to pass, then cast vote
-    pool.bid{ value: pool.minBidAmount(pId) }(pId, 1);
+    // bid then cast vote
+    pool.bid{ value: pool.minBidAmount(pId) }(pId, 1, "");
 
     // auction has ended, we should not allow further bids since vote will be cast
+    vm.roll(blockInCastWindow + cfg.timeBuffer * 2);
     vm.expectRevert();
-    pool.bid{ value: 1 ether }(pId, 1);
+    pool.bid{ value: 1 ether }(pId, 1, "");
 
     vm.roll(block.number + 2);
     pool.castVote(pId);
@@ -314,7 +326,7 @@ contract TestNounsGovernancePool is Test {
 
     // ensure no one can bid on this prop anymore since the vote has been cast
     vm.expectRevert();
-    pool.bid{ value: 2 ether }(pId, 0);
+    pool.bid{ value: 2 ether }(pId, 0, "");
     vm.roll(pc.endBlock + 10); // let prop expire
 
     // cannot be cast if voting is closed
@@ -322,14 +334,15 @@ contract TestNounsGovernancePool is Test {
     pc = nounsDAO.proposals(pId);
 
     // reverts if no bid placed but in window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.expectRevert(GovernancePool.CastVoteBidDoesNotExist.selector);
     pool.castVote(pId);
 
     // move outside the execution window
-    pool.bid{ value: 1 ether }(pId, 1);
+    pool.bid{ value: 1 ether }(pId, 1, "");
     vm.roll(pc.endBlock + 10);
 
+    // cannot cast votes if prop voting has ended
     vm.expectRevert();
     pool.castVote(pId);
 
@@ -337,8 +350,8 @@ contract TestNounsGovernancePool is Test {
     pc = nounsDAO.proposals(pId);
 
     vm.roll(pc.startBlock + 10);
-    pool.bid{ value: 1 ether }(pId, 1);
-    vm.roll(pc.endBlock - cfg.castWindow);
+    pool.bid{ value: 1 ether }(pId, 1, "");
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks) + 1);
 
     // test refunds gas and tips
     uint256 preBalance = address(tx.origin).balance;
@@ -386,11 +399,11 @@ contract TestNounsGovernancePool is Test {
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
-    vm.expectRevert(GovernancePool.CastVoteMustWait.selector);
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
+    vm.expectRevert();
     atomic.bidAndCast{ value: 1 ether }(address(pool), pId, 1);
 
-    pool.bid{ value: 99 ether }(pId, 1);
+    pool.bid{ value: 99 ether }(pId, 1, "");
   }
 
   function testRefundOnVeto() public {
@@ -409,10 +422,10 @@ contract TestNounsGovernancePool is Test {
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 69.42 ether }(pId, 1);
-    vm.roll(block.number + cfg.castWindow / 2);
+    pool.bid{ value: 69.42 ether }(pId, 1, "");
+    vm.roll(block.number + cfg.auctionCloseBlocks / 2);
 
     pool.castVote(pId);
 
@@ -454,9 +467,9 @@ contract TestNounsGovernancePool is Test {
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 69.42 ether }(pId, 1);
+    pool.bid{ value: 69.42 ether }(pId, 1, "hello");
     vm.roll(block.number + 100);
 
     pool.castVote(pId);
@@ -466,7 +479,7 @@ contract TestNounsGovernancePool is Test {
     vm.expectRevert(GovernancePool.ClaimNotRefundable.selector);
     pool.claimRefund(pId);
 
-    vm.roll(pc.endBlock + 100);
+    vm.roll(pc.endBlock + 10);
 
     // should reject a refund if the vote is already cast
     vm.prank(bidder1);
@@ -498,9 +511,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -509,7 +523,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -532,14 +547,18 @@ contract TestNounsGovernancePool is Test {
     NounsGovernanceV2 nounsDAO = NounsGovernanceV2(NOUNS_GOVERNOR);
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
+    cfg = pool.getConfig();
+
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 20 ether }(pId, 1);
+    pool.bid{ value: 20 ether }(pId, 1, "");
     vm.roll(block.number + 100);
 
-    vm.prank(bidder1);
+    GovernancePool.Bid memory bid = pool.getBid(pId);
+    vm.roll(bid.auctionEndBlock + 1);
     pool.castVote(pId);
+
     uint256 amountToWithdraw = pool.getBid(pId).remainingAmount;
 
     // ===================
@@ -669,9 +688,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -680,7 +700,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -697,10 +718,12 @@ contract TestNounsGovernancePool is Test {
     NounsGovernanceV2 nounsDAO = NounsGovernanceV2(NOUNS_GOVERNOR);
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
+    cfg = pool.getConfig();
+
     // move into the execution window and cast a vote
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 15 ether }(pId, 1);
+    pool.bid{ value: 15 ether }(pId, 1, "");
 
     vm.roll(block.number + 100);
     pool.castVote(pId);
@@ -771,9 +794,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -782,7 +806,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -798,11 +823,12 @@ contract TestNounsGovernancePool is Test {
     uint256 pId = _env.SubmitProposal(vm, 1 ether, bidder1, proposer);
     NounsGovernanceV2 nounsDAO = NounsGovernanceV2(NOUNS_GOVERNOR);
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
+    cfg = pool.getConfig();
 
     // move into the execution window and cast a vote
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 15 ether }(pId, 1);
+    pool.bid{ value: 15 ether }(pId, 1, "");
 
     vm.roll(block.number + 100);
     pool.castVote(pId);
@@ -858,9 +884,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -869,7 +896,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -937,9 +965,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -948,7 +977,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -966,9 +996,9 @@ contract TestNounsGovernancePool is Test {
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     // move into the execution window and cast a vote
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 15 ether }(pId, 1);
+    pool.bid{ value: 15 ether }(pId, 1, "");
 
     // set proof data on mock prover
     bytes[] memory proofData = new bytes[](2);
@@ -1023,9 +1053,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -1034,7 +1065,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -1052,9 +1084,9 @@ contract TestNounsGovernancePool is Test {
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     // move into the execution window and cast a vote
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 15 ether }(pId, 1);
+    pool.bid{ value: 15 ether }(pId, 1, "");
     vm.roll(pc.endBlock + 100);
 
     vm.prank(bidder1);
@@ -1113,9 +1145,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -1124,7 +1157,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -1141,9 +1175,9 @@ contract TestNounsGovernancePool is Test {
     NounsDAOLogicV2 nounsDAO = NounsDAOLogicV2(payable(address(NOUNS_GOVERNOR)));
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 15 ether }(pId, 1);
+    pool.bid{ value: 15 ether }(pId, 1, "");
     vm.roll(pc.endBlock - 10);
 
     vm.prank(proposer);
@@ -1203,9 +1237,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -1214,7 +1249,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -1231,9 +1267,9 @@ contract TestNounsGovernancePool is Test {
     NounsDAOLogicV2 nounsDAO = NounsDAOLogicV2(payable(address(NOUNS_GOVERNOR)));
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 15 ether }(pId, 1);
+    pool.bid{ value: 15 ether }(pId, 1, "");
     vm.roll(pc.endBlock - 10);
 
     address cVetoer = Vetoer(NOUNS_GOVERNOR).vetoer();
@@ -1293,9 +1329,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -1304,7 +1341,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(fmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -1316,11 +1354,12 @@ contract TestNounsGovernancePool is Test {
     uint256 pId = _env.SubmitProposal(vm, 1 ether, bidder1, proposer);
     NounsGovernanceV2 nounsDAO = NounsGovernanceV2(NOUNS_GOVERNOR);
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
+    cfg = pool.getConfig();
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 20 ether }(pId, 1);
+    pool.bid{ value: 20 ether }(pId, 1, "");
     vm.roll(block.number + 100);
     pool.castVote(pId);
     vm.roll(pc.endBlock + 10);
@@ -1384,9 +1423,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       1 wei,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -1395,7 +1435,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -1414,11 +1455,12 @@ contract TestNounsGovernancePool is Test {
     uint256 pId = _env.SubmitProposal(vm, 1 ether, bidder1, proposer);
     NounsDAOLogicV2 nounsDAO = NounsDAOLogicV2(payable(NOUNS_GOVERNOR));
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
+    cfg = pool.getConfig();
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 1 gwei }(pId, 1);
+    pool.bid{ value: 1 gwei }(pId, 1, "");
     vm.roll(block.number + 100);
     pool.castVote(pId);
     vm.roll(pc.endBlock + 100);
@@ -1427,9 +1469,9 @@ contract TestNounsGovernancePool is Test {
     uint256 firstpId = pId;
     pId = _env.SubmitProposal(vm, 1 ether, bidder1, proposer);
     pc = nounsDAO.proposals(pId);
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 6 ether }(pId, 1);
+    pool.bid{ value: 6 ether }(pId, 1, "");
     vm.roll(block.number + 100);
     pool.castVote(pId);
 
@@ -1489,9 +1531,10 @@ contract TestNounsGovernancePool is Test {
       NOUNS_TOKEN,
       owner,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       250,
       80 gwei,
@@ -1500,7 +1543,8 @@ contract TestNounsGovernancePool is Test {
       DELEGATE_CASH,
       address(fmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(cfg.base);
@@ -1509,16 +1553,23 @@ contract TestNounsGovernancePool is Test {
     vm.prank(delegator);
     nt.delegate(cfg.base);
 
+    cfg = pool.getConfig();
     uint256 pId = _env.SubmitProposal(vm, 1 ether, bidder1, proposer);
-    NounsGovernanceV2 nounsDAO = NounsGovernanceV2(NOUNS_GOVERNOR);
+    NounsDAOLogicV2 nounsDAO = NounsDAOLogicV2(payable(NOUNS_GOVERNOR));
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
-    pool.bid{ value: 20 ether }(pId, 1);
-    vm.roll(block.number + 100);
+    pool.bid{ value: 20 ether }(pId, 1, "");
+
+    GovernancePool.Bid memory bid = pool.getBid(pId);
+    vm.roll(bid.auctionEndBlock + 1);
     pool.castVote(pId);
+
+    _env.PassProp(pId, vm);
+    vm.roll(pc.endBlock + 10);
+    nounsDAO.queue(pId);
 
     // set proof data on mock prover
     bytes[] memory proofData = new bytes[](2);
@@ -1544,11 +1595,18 @@ contract TestNounsGovernancePool is Test {
     bytes[] memory proofBatches = new bytes[](1);
     proofBatches[0] = abi.encode(proofData);
 
+    // should fail early if prop is not in a completed state
     vm.startPrank(delegator);
+    vm.expectRevert(GovernancePool.WithdrawPropIsActive.selector);
+    pool.withdraw(delegator, address(mp), pIds, fees, proofBatches);
+
+    pc = nounsDAO.proposals(pId);
+    vm.warp(pc.eta + 1);
+    nounsDAO.execute(pId);
+
     vm.expectRevert(
       abi.encodeWithSelector(GovernancePool.WithdrawInvalidProof.selector, "balanceOf")
     );
-    vm.roll(pc.endBlock + 10);
     pool.withdraw(delegator, address(mp), pIds, fees, proofBatches);
   }
 
@@ -1569,12 +1627,12 @@ contract TestNounsGovernancePool is Test {
     // ensure bid is created
     vm.prank(bidder1);
     vm.roll(pc.startBlock + 10);
-    pool.bid{ value: 1 ether }(pId, 1);
+    pool.bid{ value: 1 ether }(pId, 1, "");
 
-    vm.roll((pc.endBlock - cfg.castWindow + 10));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks + 10));
 
     vm.expectRevert(GovernancePool.BidAuctionEnded.selector);
-    pool.bid{ value: 2 ether }(pId, 1);
+    pool.bid{ value: 2 ether }(pId, 1, "");
 
     pool.castVote(pId);
   }

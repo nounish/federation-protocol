@@ -38,7 +38,7 @@ interface NounsToken {
 // pool for each prop once a vote has been cast and the voting period ends.
 contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConfig {
   /// The name of this contract
-  string public constant name = "Federation Nouns Governance Pool v0.1";
+  string public constant name = "Federation Nouns Governance Pool v0.2";
 
   /// The maximum uint256 value. Necessary to track this for overflow reasons
   /// fee switch as bps
@@ -71,7 +71,11 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
   }
 
   /// Submit a bid for a proposal vote
-  function bid(uint256 _pId, uint256 _support) external payable {
+  function bid(uint256 _pId, uint256 _support, string calldata _reason) external payable {
+    if (_pId < _cfg.migrationPropId) {
+      revert BidNoAuction();
+    }
+
     if (_support > 2) {
       revert BidInvalidSupport();
     }
@@ -107,10 +111,8 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
       revert BidModulePaused();
     }
 
-    // if we are in the cast window and have a winning bid, the auction has ended and the
-    // vote can be cast. auctions are not extended so that we can always guarantee a vote
-    // is cast before the external proposal voting period ends
-    if (block.number + _cfg.castWindow > b.endBlock) {
+    // accept bids up until the block votes could be cast if none were received
+    if (block.number > b.auctionEndBlock) {
       if (lastAmount >= _cfg.reservePrice) {
         revert BidAuctionEnded();
       }
@@ -119,7 +121,6 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
     b.amount = msg.value;
     b.bidder = msg.sender;
     b.support = _support;
-    b.bidBlock = block.number;
     b.remainingAmount = b.amount;
 
     NounsDAOStorageV2.ProposalCondensed memory eProp =
@@ -127,6 +128,32 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
     b.creationBlock = eProp.creationBlock;
     b.startBlock = eProp.startBlock;
     b.endBlock = eProp.endBlock;
+
+    // first bid for auction set end block. auctions close at the default time
+    // if no bids are placed within `timeBuffer` of auctionCloseBlocks
+    if (b.auctionEndBlock == 0) {
+      uint256 endBlock = eProp.endBlock - _cfg.auctionCloseBlocks;
+      if (block.number > endBlock) {
+        revert BidAuctionEnded();
+      }
+
+      b.auctionEndBlock = endBlock;
+    }
+
+    // extend the auction if the bid was received within `timeBuffer` of the
+    // auction end time
+    bool extended = b.auctionEndBlock - block.number < _cfg.timeBuffer;
+    if (extended) {
+      uint256 _defaultEndBlock = b.endBlock - _cfg.castWindow;
+      uint256 _auctionEndBlock = block.number + _cfg.timeBuffer;
+
+      if (_auctionEndBlock < _defaultEndBlock) {
+        b.auctionEndBlock = _auctionEndBlock;
+      } else {
+        // auctions never extend past the cast window
+        b.auctionEndBlock = _defaultEndBlock;
+      }
+    }
 
     // request base lock so that this module cannot be disabled while a bid is active
     // requestLock works on a rolling basis so this module will always be allowed
@@ -138,10 +165,11 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
       SafeTransferLib.forceSafeTransferETH(lastBidder, lastAmount);
     }
 
-    emit BidPlaced(_cfg.externalDAO, _pId, _support, b.amount, msg.sender);
+    emit BidPlaced(_cfg.externalDAO, _pId, _support, b.amount, msg.sender, _reason);
   }
 
-  /// Refunds a bid if a proposal is canceled, vetoed, or votes could not be cast
+  /// Refunds a bid if a proposal is canceled, vetoed, expired, or votes could
+  /// not be cast
   function claimRefund(uint256 _pId) external {
     Bid storage b = bids[_pId];
 
@@ -170,13 +198,9 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
       revert CastVoteBidDoesNotExist();
     }
 
-    if (block.number + _cfg.castWindow < b.endBlock) {
+    // no atomic bid + casts or casting before the auction ends
+    if (block.number <= b.auctionEndBlock) {
       revert CastVoteNotInWindow();
-    }
-
-    // no atomic bid / casts
-    if (block.number < b.bidBlock + _cfg.castWaitBlocks) {
-      revert CastVoteMustWait();
     }
 
     if (b.executed) {
@@ -283,8 +307,8 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
         revert WithdrawAlreadyClaimed();
       }
 
-      // only allow withdrawals after the voting period has ended
-      if (_active(_pIds[i])) {
+      // only allow withdrawals once a prop is in a completed non-refundable state
+      if (!_completed(_pIds[i])) {
         revert WithdrawPropIsActive();
       }
 
@@ -396,6 +420,11 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
       return true;
     }
 
+    // expired
+    if (state == 6) {
+      return true;
+    }
+
     // pending, active, or updatable states should never be refundable since
     // voting is either in progress or has not started
     // 0 == Pending, 1 == Active, 10 == Updatable
@@ -426,5 +455,13 @@ contract NounsPool is PausableUpgradeable, Motivator, GovernancePool, ModuleConf
   /// Helper that determines if a proposal voting period is active
   function _active(uint256 _pId) internal view returns (bool) {
     return NounsGovernanceV2(_cfg.externalDAO).state(_pId) == 1;
+  }
+
+  /// Helper that determines if a proposal is in a completed state
+  function _completed(uint256 _pId) internal view returns (bool) {
+    NounsGovernanceV2 dao = NounsGovernanceV2(_cfg.externalDAO);
+
+    // defeated || executed
+    return dao.state(_pId) == 3 || dao.state(_pId) == 7;
   }
 }

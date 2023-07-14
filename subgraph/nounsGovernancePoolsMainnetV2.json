@@ -1,0 +1,32 @@
+{
+  "version": "1",
+  "name": "NounsGovernancePool",
+  "abis": {
+    "Factory": {
+      "path": "../abi/governance-pool/nounsFactoryv2.json"
+    },
+    "Pool": {
+      "path": "../abi/governance-pool/nounsv2.json"
+    }
+  },
+  "chains": ["mainnet"],
+  "instances": [
+    {
+      "abi": "Factory",
+      "address": "0x742eB766e1391C6e441a1FB685Ddf1F8Cc5855C6",
+      "startBlock": 17744000,
+      "chain": "mainnet"
+    },
+    {
+      "abi": "Pool",
+      "chain": "mainnet",
+      "address": "0x0f722d69B3D8C292E85F2b1E5D9F4439edd58F1e",
+      "startBlock": 17744000,
+      "source": {
+        "abi": "Factory",
+        "eventSignature": "Created(address)",
+        "addressParam": "addr"
+      }
+    }
+  ]
+}

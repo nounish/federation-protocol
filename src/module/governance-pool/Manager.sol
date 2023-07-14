@@ -8,20 +8,25 @@ pragma solidity ^0.8.19;
 
 /// Module to manage governance pools
 contract Manager is Module, OwnableUpgradeable {
+  /// The name of this contract
+  string public constant name = "Federation Manager v0.1";
+
   struct Config {
     /// The base wallet address for this module
     address base;
     /// The module to manage
     address module;
+    /// Owner of this module
+    address owner;
   }
-
-  error TransactionReverted();
-
-  /// The name of this contract
-  string public constant name = "Governance Pool Manager";
 
   /// Module config
   Config internal _cfg;
+
+  /// Do not leave implementation uninitialized
+  constructor() {
+    _disableInitializers();
+  }
 
   /// Module initialization; Can only be called once
   function init(bytes calldata _data) external payable initializer {
@@ -29,7 +34,7 @@ contract Manager is Module, OwnableUpgradeable {
 
     _cfg = abi.decode(_data, (Config));
 
-    _transferOwnership(msg.sender);
+    _transferOwnership(_cfg.owner);
   }
 
   /// Execute a generic tx against the governance pool

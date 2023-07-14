@@ -12,6 +12,7 @@ interface GovernancePool is Module {
   error InitFeeRecipientNotSet();
   error InitCastWindowNotSet();
   error InitBaseWalletNotSet();
+  error InitAuctionCloseBlocksNotSet();
 
   error BidTooLow();
   error BidAuctionEnded();
@@ -21,11 +22,11 @@ interface GovernancePool is Module {
   error BidVoteAlreadyCast();
   error BidMaxBidExceeded();
   error BidModulePaused();
+  error BidNoAuction();
 
   error CastVoteBidDoesNotExist();
   error CastVoteNotInWindow();
   error CastVoteNoDelegations();
-  error CastVoteMustWait();
   error CastVoteAlreadyCast();
 
   error ClaimOnlyBidder();
@@ -57,8 +58,8 @@ interface GovernancePool is Module {
     uint256 startBlock;
     /// The block number the external proposal voting period ends
     uint256 endBlock;
-    /// the block number the bid was made
-    uint256 bidBlock;
+    /// The block number that the given auction ends; can be extended up until endBlock - cfg.castWindow
+    uint256 auctionEndBlock;
     /// The support value to cast if this bid wins
     uint256 support;
     /// The address of the bidder
@@ -76,7 +77,12 @@ interface GovernancePool is Module {
 
   /// Emitted when a bid has been placed
   event BidPlaced(
-    address indexed dao, uint256 indexed propId, uint256 support, uint256 amount, address bidder
+    address indexed dao,
+    uint256 indexed propId,
+    uint256 support,
+    uint256 amount,
+    address bidder,
+    string reason
   );
 
   /// Emitted when a refund has been claimed
@@ -91,7 +97,7 @@ interface GovernancePool is Module {
   event ProtocolFeeApplied(address indexed recipient, uint256 amount);
 
   /// Bid on a proposal
-  function bid(uint256, uint256) external payable;
+  function bid(uint256, uint256, string memory) external payable;
 
   /// Cast a vote from the contract to external proposal
   function castVote(uint256) external;
