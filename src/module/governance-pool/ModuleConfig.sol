@@ -37,32 +37,41 @@ abstract contract ModuleConfig is OwnableUpgradeable {
     address feeRecipient;
     /// The minimum bid accepted to cast a vote
     uint256 reservePrice;
-    /// castWaitBlocks prevents any votes from being cast until this time in blocks has passed
-    uint256 castWaitBlocks;
+    /// Amount of blocks an auction should extend if a bid is placed
+    uint256 timeBuffer;
     /// The minimum percent difference between the last bid placed for a
     /// proposal vote and the current one
     uint256 minBidIncrementPercentage;
     /// The window in blocks when a vote can be cast
     uint256 castWindow;
+    /// The default amount of blocks an auction ends before a proposals endblock
+    /// provides a buffer for the last bid placed to extend the auction by timeBuffer up until the cast window
+    /// this sets the default value for all bids. It must be at least castWindow blocks.
+    /// (ex) to end auctions 2 hours before a proposal ends, set this to 600. they can then be extended up to castWindow
+    uint256 auctionCloseBlocks;
     /// The default tip configured for casting a vote
     uint256 tip;
     /// feeBPS as parts per 10_000, i.e. 10% = 1000
     uint256 feeBPS;
     /// The maximum amount of base fee that can be refunded when casting a vote
     uint256 maxBaseFeeRefund;
-    /// max relic batch prover version; if 0 any prover version is accepted
+    /// Max relic batch prover version; if 0 any prover version is accepted
     uint256 maxProverVersion;
-    /// relic reliquary address
+    /// Relic reliquary address
     address reliquary;
-    /// delegate cash registry address
+    /// Delegate cash registry address
     address dcash;
-    /// fact validator address
+    /// Fact validator address
     address factValidator;
-    /// in preparation for Nouns governance v2->v3 we need to know
+    /// In preparation for Nouns governance v2->v3 we need to know
     /// handle switching vote snapshots to a proposal's start block
     uint256 useStartBlockFromPropId;
-    /// configurable vote reason
+    /// Configurable vote reason
     string reason;
+    /// Minimum propId that bids can be placed on. This is used to prevent competing
+    /// with a previous version of this pool that has existing bids placed
+    /// Set to accept bids on any prop
+    uint256 migrationPropId;
   }
 
   /// The storage slot index containing nouns token balance mappings
@@ -93,22 +102,18 @@ abstract contract ModuleConfig is OwnableUpgradeable {
 
   /// Management function to update the config post initialization
   function setConfig(Config memory _config) external onlyOwner isNotLocked {
-    // fees cannot be updated after initialization
-    _config.feeBPS = _cfg.feeBPS;
-    _config.feeRecipient = _cfg.feeRecipient;
-
     _cfg = _validateConfig(_config);
     emit ConfigChanged();
   }
 
-  function setTipAndRefund(uint256 _tip, uint256 _maxBaseFeeRefund) external onlyOwner isNotLocked {
+  function setTipAndRefund(uint256 _tip, uint256 _maxBaseFeeRefund) external onlyOwner {
     _cfg.tip = _tip;
     _cfg.maxBaseFeeRefund = _maxBaseFeeRefund;
     emit ConfigChanged();
   }
 
   /// Management function to set token storage slots for proof verification
-  function setSlots(uint256 balanceSlot, uint256 delegateSlot) external onlyOwner isNotLocked {
+  function setSlots(uint256 balanceSlot, uint256 delegateSlot) external onlyOwner {
     balanceSlotIdx = bytes32(balanceSlot);
     delegateSlotIdx = bytes32(delegateSlot);
     emit SlotsUpdated(balanceSlotIdx, delegateSlotIdx);
@@ -118,7 +123,6 @@ abstract contract ModuleConfig is OwnableUpgradeable {
   function setAddresses(address _reliquary, address _delegateCash, address _factValidator)
     external
     onlyOwner
-    isNotLocked
   {
     require(_reliquary != address(0), "invalid reliquary addr");
     require(_delegateCash != address(0), "invalid delegate cash registry addr");
@@ -151,9 +155,15 @@ abstract contract ModuleConfig is OwnableUpgradeable {
   }
 
   /// Management function to reduce fees
-  function setFeeBPS(uint256 _feeBPS) external onlyOwner {
+  function setFee(uint256 _feeBPS, address _feeRecipient) external onlyOwner {
+    if (_feeBPS > 0) {
+      require(_feeRecipient != address(0), "recipient cannot be 0 if fee is set");
+    }
+
     require(_feeBPS < _cfg.feeBPS, "fee cannot be increased");
+
     _cfg.feeBPS = _feeBPS;
+    _cfg.feeRecipient = _feeRecipient;
     emit ConfigChanged();
   }
 
@@ -171,10 +181,28 @@ abstract contract ModuleConfig is OwnableUpgradeable {
     emit ConfigChanged();
   }
 
+  /// Management function to update auction extension settings
+  function setAuctionSettings(uint256 _timeBuffer, uint256 _auctionCloseBlocks) external onlyOwner {
+    require(_auctionCloseBlocks >= _cfg.castWindow, "auction close blocks < cast window");
+    _cfg.timeBuffer = _timeBuffer;
+    _cfg.auctionCloseBlocks = _auctionCloseBlocks;
+    emit ConfigChanged();
+  }
+
+  /// Management function to set migrationPropId
+  function setMigrationPropId(uint256 _migrationPropId) external onlyOwner {
+    _cfg.migrationPropId = _migrationPropId;
+    emit ConfigChanged();
+  }
+
   /// Validates that the config is set properly and sets default values if necessary
   function _validateConfig(Config memory _config) internal pure returns (Config memory) {
     if (_config.castWindow == 0) {
       revert GovernancePool.InitCastWindowNotSet();
+    }
+
+    if (_config.auctionCloseBlocks == 0 || _config.auctionCloseBlocks < _config.castWindow) {
+      revert GovernancePool.InitAuctionCloseBlocksNotSet();
     }
 
     if (_config.externalDAO == address(0)) {
@@ -196,11 +224,6 @@ abstract contract ModuleConfig is OwnableUpgradeable {
     // default reserve price
     if (_config.reservePrice == 0) {
       _config.reservePrice = 1 wei;
-    }
-
-    // default cast wait blocks 5 ~= 1 minute
-    if (_config.castWaitBlocks == 0) {
-      _config.castWaitBlocks = 5;
     }
 
     return _config;

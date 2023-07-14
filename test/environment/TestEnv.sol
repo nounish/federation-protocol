@@ -35,6 +35,18 @@ contract TestEnv {
     stdstore.target(NOUNS_GOVERNOR).sig("vetoer()").checked_write(_vetoer);
   }
 
+  /// Helper function to auto pass a prop
+  function PassProp(uint256 pId, Vm vm) external {
+    vm.prank(0x86030dbbCe1c771Ff6622C20455cd3619aa93c05);
+    INounsDAOLogicV2(NOUNS_GOVERNOR).castVote(pId, 1);
+
+    vm.prank(0xf6B6F07862A02C85628B3A9688beae07fEA9C863);
+    INounsDAOLogicV2(NOUNS_GOVERNOR).castVote(pId, 1);
+
+    vm.prank(0x6b2645b468A828a12fEA8C7D644445eB808Ec2B1);
+    INounsDAOLogicV2(NOUNS_GOVERNOR).castVote(pId, 1);
+  }
+
   /// Setup 5 accounts and mint a random number of nouns for each
   function SetupNouners(Vm vm) external returns (address[5] memory) {
     // overwrite minter storage slot and set account[0] as the minter

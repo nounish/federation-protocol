@@ -4,10 +4,6 @@
 [![License][license-badge]][license]
 <!-- ![build status](https://github.com/nounish/federation-protocol/actions/workflows/test.yml/badge.svg) -->
 
-<p align="center">
-<img src="https://i.postimg.cc/bwWDw2n2/1684202030294.jpg" width="420" />
-</p>
-
 <p align="center" width="672">
 <a href="https://federation.wtf">Federation</a> is a protocol and collection of modules for coordinating around shared governance rights onchain
 </p>
@@ -23,15 +19,18 @@ The protocol is open and designed to be extended with new functionality through 
 
 Nouns holders can delegate their Noun(s) to a governance pool. The collective voting power of the pool is then auctioned off to the highest bidder. Those who delegate to a governance pool earn rewards from each auction in proportion to the amount of votes they own / total pool size. This is possible through the use of ZKProofs and as a result no asset staking or registration is required to join a pool.
 
-Auctions for governance pools end at a fixed time so that votes are always cast before a voting period ends. If a vote could not be cast in time, the highest bidder can claim a full refund. If a vote is cast but the proposal is then canceled or vetoed, the highest bidder can claim a partial refund (minus any configured fees + gas refunds + tips).
+If a vote could not be cast in time, the highest bidder can claim a full refund. If a vote is cast but the proposal is then canceled or vetoed, the highest bidder can claim a partial refund (minus any configured fees + gas refunds + tips).
 
-### Scalable cross governance (dao->dao)
+
+### Cross governance (dao->dao)
 
 Coming soon
+
 
 ## Audit
 
 This code has not been formally audited. However it has been reviewed by the team at [Relic protocol](https://relicprotocol.com/) to ensure that proof verification is done in a secure way. It's also heavily tested, but keep in mind that contract risk exists.
+
 
 ## Build and run tests
 

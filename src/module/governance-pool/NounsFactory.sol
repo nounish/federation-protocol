@@ -42,6 +42,16 @@ contract NounsFactory is Ownable {
     /// The minimum percent difference between the last bid placed for a
     /// proposal vote and the current one
     uint256 minBidIncrementPercentage;
+    /// The window in blocks when a vote can be cast
+    uint256 castWindow;
+    /// Blocks to extend auctions
+    uint256 timeBuffer;
+    /// The default amount of blocks an auction ends before a proposals endblock
+    uint256 auctionCloseBlocks;
+    /// Cast vote tip
+    uint256 tip;
+    /// Minimum prop id bids can be accepted on
+    uint256 migrationPropId;
   }
 
   /// The address of the implementation contract
@@ -90,23 +100,31 @@ contract NounsFactory is Ownable {
 
   /// Deploy a new Nouns Governance Pool
   /// @param _cfg Factory pool config
-  /// @param _castWindow The number of blocks before a proposal voting period ends that a governance pool vote can be cast. @default _castWindow 150 (~30 minutes)
-  /// @param _tip The amount of ETH to tip the relayer for casting a vote. @default _tip 0.0025 ethe
   /// @param _reason The reason used when voting on proposals
-  function clone(PoolConfig memory _cfg, uint256 _castWindow, uint256 _tip, string calldata _reason)
+  function clone(PoolConfig memory _cfg, string calldata _reason)
     external
     payable
     returns (address)
   {
     address inst = Clones.clone(impl);
 
-    // default values
-    if (_castWindow == 0) {
-      _castWindow = 150;
+    // default to ~30 min
+    if (_cfg.castWindow == 0) {
+      _cfg.castWindow = 150;
     }
 
-    if (_tip == 0) {
-      _tip = 0.0025 ether;
+    if (_cfg.tip == 0) {
+      _cfg.tip = 0.0025 ether;
+    }
+
+    // default to ~5 min
+    if (_cfg.timeBuffer == 0) {
+      _cfg.timeBuffer = 25;
+    }
+
+    // default to ~2 hours: results in max 1.5 hours extension
+    if (_cfg.auctionCloseBlocks == 0) {
+      _cfg.auctionCloseBlocks = 600;
     }
 
     ModuleConfig.Config memory cfg = ModuleConfig.Config(
@@ -115,10 +133,11 @@ contract NounsFactory is Ownable {
       _cfg.token,
       feeRecipient,
       _cfg.reservePrice,
-      1, // castWaitBlocks
+      _cfg.timeBuffer,
       _cfg.minBidIncrementPercentage,
-      _castWindow,
-      _tip,
+      _cfg.castWindow,
+      _cfg.auctionCloseBlocks,
+      _cfg.tip,
       feeBPS,
       maxBaseFeeRefund,
       0, // maxProver version
@@ -126,7 +145,8 @@ contract NounsFactory is Ownable {
       dcash,
       factValidator,
       useStartBlockFromPropId,
-      _reason
+      _reason,
+      _cfg.migrationPropId
     );
 
     Module(inst).init{ value: msg.value }(abi.encode(cfg));

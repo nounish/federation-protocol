@@ -81,9 +81,10 @@ contract TestGovernancePoolConfig is Test {
     baseWallet = Wallet(address(proxy));
     admin.transferOwnership(owner);
 
-    NounsFactory.PoolConfig memory fCfg =
-      NounsFactory.PoolConfig(address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5);
-    pool = NounsPool(poolFactory.clone(fCfg, 150, 0.01 ether, "hello world"));
+    NounsFactory.PoolConfig memory fCfg = NounsFactory.PoolConfig(
+      address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5, 150, 0, 0, 0.01 ether, 0
+    );
+    pool = NounsPool(poolFactory.clone(fCfg, "hello world"));
     baseWallet.setModule(address(pool), true);
 
     uint256 mainnetFork = vm.createFork(vm.envString("MAINNET_RPC_URL"));
@@ -109,18 +110,20 @@ contract TestGovernancePoolConfig is Test {
       NOUNS_TOKEN,
       bidder2,
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
-      0,
+      1000,
       80 gwei,
       0,
       RELIQUARY,
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(delegator1);
@@ -130,8 +133,6 @@ contract TestGovernancePoolConfig is Test {
     pool.setConfig(pcfg);
 
     cfg = pool.getConfig();
-    assert(cfg.feeRecipient != bidder2);
-    assert(cfg.feeBPS != 0);
 
     uint256 pIdF = _env.SubmitProposal(vm, 1 ether, bidder1, delegator1);
     uint256 pId = _env.SubmitProposal(vm, 1 ether, bidder1, proposer);
@@ -139,9 +140,9 @@ contract TestGovernancePoolConfig is Test {
     NounsDAOStorageV2.ProposalCondensed memory pc = nounsDAO.proposals(pId);
 
     // move into the execution window
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks - 100));
     vm.prank(bidder1);
-    pool.bid{ value: 20 ether }(pId, 1);
+    pool.bid{ value: 20 ether }(pId, 1, "hello world");
 
     // if we pause, should only be allowed to bid on
     // proposals that have a previous bid
@@ -149,32 +150,22 @@ contract TestGovernancePoolConfig is Test {
     Pausable(address(pool)).pause();
 
     vm.prank(bidder1);
-    pool.bid{ value: 23 ether }(pId, 1);
+    pool.bid{ value: 23 ether }(pId, 1, "hello world");
 
     vm.prank(bidder1);
     vm.expectRevert(GovernancePool.BidModulePaused.selector);
-    pool.bid{ value: 20 ether }(pIdF, 1);
+    pool.bid{ value: 20 ether }(pIdF, 1, "hello world");
 
     vm.prank(cfg.base);
     Pausable(address(pool)).unpause();
-    pool.bid{ value: 20 ether }(pIdF, 1);
-    pool.bid{ value: 30 ether }(pId, 1);
+    pool.bid{ value: 20 ether }(pIdF, 1, "hello world");
+    pool.bid{ value: 30 ether }(pId, 1, "hello world");
     // =====
 
     // can only be called if not locked
     vm.prank(cfg.base);
     vm.expectRevert(ModuleConfig.ConfigModuleHasActiveLock.selector);
     pool.setConfig(pcfg);
-
-    // cannot set slots if active lock
-    vm.prank(cfg.base);
-    vm.expectRevert(ModuleConfig.ConfigModuleHasActiveLock.selector);
-    pool.setSlots(1, 2);
-
-    // cannot set addresses if active lock
-    vm.prank(cfg.base);
-    vm.expectRevert(ModuleConfig.ConfigModuleHasActiveLock.selector);
-    pool.setAddresses(owner, owner, owner);
 
     // should be unlocked after prop end block
     vm.roll(pc.endBlock + 10);
@@ -195,13 +186,14 @@ contract TestGovernancePoolConfig is Test {
     assertEq(cfg.factValidator, owner);
 
     vm.expectRevert();
-    pool.setFeeBPS(1 wei);
+    pool.setFee(100, owner);
 
     // only owner
     vm.prank(cfg.base);
-    pool.setFeeBPS(1 wei);
+    uint256 newfee = cfg.feeBPS - 10;
+    pool.setFee(newfee, owner);
     cfg = pool.getConfig();
-    assertEq(cfg.feeBPS, 1 wei);
+    assertEq(cfg.feeBPS, newfee);
 
     // only owner
     vm.expectRevert();

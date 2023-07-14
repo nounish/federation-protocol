@@ -116,9 +116,13 @@ contract TestBaseWallet is Test {
 
     GenericModule module = new GenericModule();
     ModuleConfig memory mc = ModuleConfig(address(baseWallet));
+
+    GenericModule module2 = new GenericModule();
     module.init(abi.encode(mc));
+    module2.init(abi.encode(mc));
 
     baseWallet.setModule(address(module), true);
+    baseWallet.setModule(address(module2), true);
 
     vm.recordLogs();
     vm.prank(address(module));
@@ -130,6 +134,11 @@ contract TestBaseWallet is Test {
     assertEq(e, keccak256("RequestLock(address,uint256)"));
 
     vm.roll(block.number + 200);
+
+    vm.prank(address(module2));
+    lockEnds = baseWallet.requestLock(300);
+    assertEq(lockEnds, block.number + 300, "should return lock end time");
+
     vm.prank(address(module));
     uint256 remaining = baseWallet.requestLock(50);
     assertEq(

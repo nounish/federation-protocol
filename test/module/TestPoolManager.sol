@@ -8,6 +8,7 @@ import { NounsPool, NounsGovernanceV2 } from "src/module/governance-pool/Nouns.s
 import { GovernancePool } from "src/module/governance-pool/GovernancePool.sol";
 import { ModuleConfig } from "src/module/governance-pool/ModuleConfig.sol";
 import { NounsFactory } from "src/module/governance-pool/NounsFactory.sol";
+import { ManagerFactory } from "src/module/governance-pool/ManagerFactory.sol";
 import { AtomicBidAndCast } from "test/misc/AtomicBidAndCast.sol";
 import { FailMockValidator, PassMockValidator } from "test/misc/MockFactValidator.sol";
 import { MockProver } from "test/misc/MockProver.sol";
@@ -84,19 +85,19 @@ contract TestPoolManager is Test {
     baseWallet = Wallet(address(proxy));
     admin.transferOwnership(owner);
 
-    NounsFactory.PoolConfig memory fCfg =
-      NounsFactory.PoolConfig(address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5);
-    pool = NounsPool(poolFactory.clone(fCfg, 150, 0.01 ether, "lfg42069nounseth"));
+    NounsFactory.PoolConfig memory fCfg = NounsFactory.PoolConfig(
+      address(baseWallet), NOUNS_GOVERNOR, NOUNS_TOKEN, 0.1 ether, 5, 150, 0, 0, 0.01 ether, 0
+    );
+    pool = NounsPool(poolFactory.clone(fCfg, "hello world"));
     baseWallet.setModule(address(pool), true);
 
     Manager m = new Manager();
-    Manager.Config memory mcfg = Manager.Config(address(baseWallet), address(pool));
-    vm.prank(owner);
-    m.init(abi.encode(mcfg));
-    baseWallet.setModule(address(m), true);
-    manager = m;
+    ManagerFactory mf = new ManagerFactory(address(m));
+    address newManager = mf.clone(address(baseWallet), address(pool), owner);
+    manager = Manager(newManager);
 
-    assertEq(m.owner(), owner);
+    baseWallet.setModule(address(newManager), true);
+    assertEq(manager.owner(), owner);
 
     uint256 mainnetFork = vm.createFork(vm.envString("MAINNET_RPC_URL"));
     vm.selectFork(mainnetFork);
@@ -121,9 +122,10 @@ contract TestPoolManager is Test {
       NOUNS_TOKEN,
       address(0),
       0.1 ether,
-      5,
+      25, // timeBuffer
       5,
       150,
+      200, // auctionCloseBlocks
       0.01 ether,
       0,
       80 gwei,
@@ -132,7 +134,8 @@ contract TestPoolManager is Test {
       DELEGATE_CASH,
       address(pmv),
       0,
-      ""
+      "",
+      0
     );
 
     vm.prank(delegator1);
@@ -142,8 +145,6 @@ contract TestPoolManager is Test {
     pool.setConfig(pcfg);
 
     cfg = pool.getConfig();
-    assert(cfg.feeRecipient != address(0));
-    assert(cfg.feeBPS != 0);
 
     uint256 pId = _env.SubmitProposal(vm, 1 ether, bidder1, proposer);
     NounsDAOLogicV2 nounsDAO = NounsDAOLogicV2(payable(NOUNS_GOVERNOR));
@@ -164,10 +165,10 @@ contract TestPoolManager is Test {
     manager.execute(callData);
 
     // cannot bid
-    vm.roll((pc.endBlock - cfg.castWindow));
+    vm.roll((pc.endBlock - cfg.auctionCloseBlocks));
     vm.prank(bidder1);
     vm.expectRevert();
-    pool.bid{ value: 20 ether }(pId, 1);
+    pool.bid{ value: 20 ether }(pId, 1, "");
 
     s = Pausable.unpause.selector;
     callData = abi.encodeWithSelector(s);
@@ -177,8 +178,8 @@ contract TestPoolManager is Test {
     paused = PausableUpgradeable(address(pool)).paused();
     assertEq(paused, false);
 
-    // can bid
-    pool.bid{ value: 20 ether }(pId, 1);
+    // can bid + auction extends
+    pool.bid{ value: 20 ether }(pId, 1, "");
   }
 
   function testSetUseStartBlock() public {
