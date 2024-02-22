@@ -5,13 +5,33 @@
   "repository": "nounish/federation-protocol.git",
   "author": "wiz",
   "license": "GPL-V3",
+  "scripts": {
+    "deployNounsGovernor": "yarn hardhat --show-stack-traces deploy-zksync --script deployNounsGovernor.js",
+    "deployNounsRelayer": "npx hardhat run deploy/deployNounsRelayer.js",
+    "testMockLilNounsToken": "npx hardhat run deploy/deployMockLilNounsToken.js",
+    "testL2Governance": "npx hardhat run deploy/testL2Governance.js",
+    "testCrossChainL2": "yarn hardhat --show-stack-traces deploy-zksync --script testCrossChainL2.js",
+    "testCrossChainL1": "yarn hardhat run deploy/testCrossChainL1.js",
+    "waitForInclusion": "yarn hardhat run deploy/waitForInclusion.js"
+  },
   "dependencies": {
-    "@relicprotocol/client": "^0.0.8",
+    "@matterlabs/hardhat-zksync-deploy": "^0.6.5",
+    "@matterlabs/hardhat-zksync-verify": "^0.2.1",
+    "@nomicfoundation/hardhat-viem": "^1.0.0",
+    "@relicprotocol/client": "^0.1.0",
     "@types/node": "^18.15.10",
     "cmd-ts": "^0.12.1",
-    "dotenv": "^16.0.3",
-    "ethers": "5.0.0",
+    "dotenv": "^16.3.1",
+    "ethers": "^5.7.2",
     "ts-node": "^10.9.1",
-    "typescript": "^5.0.2"
+    "typescript": "^5.0.2",
+    "viem": "^1.18.2",
+    "wait": "^0.4.2",
+    "zksync-web3": "^0.16.0"
+  },
+  "devDependencies": {
+    "@matterlabs/hardhat-zksync-solc": "^0.4.2",
+    "@nomicfoundation/hardhat-foundry": "^1.1.1",
+    "hardhat": "^2.18.3"
   }
 }

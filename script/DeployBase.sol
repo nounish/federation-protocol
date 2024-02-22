@@ -5,7 +5,7 @@ import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { Base } from "src/wallet/Base.sol";
 import { BaseProxy } from "src/wallet/BaseProxy.sol";
-import { ProxyAdmin } from "openzeppelin/proxy/transparent/ProxyAdmin.sol";
+import { ProxyAdmin } from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 
 contract Deploy is Script {
   function run() external {

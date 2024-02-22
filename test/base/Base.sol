@@ -3,9 +3,9 @@
 import "forge-std/Test.sol";
 import { Base } from "src/wallet/Base.sol";
 import { Wallet } from "src/wallet/Wallet.sol";
-import { Ownable } from "openzeppelin/access/Ownable.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { BaseProxy } from "src/wallet/BaseProxy.sol";
-import { ProxyAdmin } from "openzeppelin/proxy/transparent/ProxyAdmin.sol";
+import { ProxyAdmin } from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import { GenericModule, ModuleConfig } from "test/module/TestGenericModule.sol";
 
 pragma solidity ^0.8.19;
