@@ -26,4 +26,6 @@ interface INounsDAOLogicV2 {
   function quorumVotes() external view returns (uint256);
 
   function proposalThreshold() external view returns (uint256);
+
+  function proposals(uint256 proposalId) external view returns (NounsDAOStorageV2.ProposalCondensed memory);
 }

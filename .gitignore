@@ -1,8 +1,11 @@
 # Compiler files
+.cache/
 cache/
 out/
 cache_hardhat/
+cache_hardhat-zk/
 artifacts/
+artifacts-zk/
 .DS_Store
 
 # Ignores development broadcast logs

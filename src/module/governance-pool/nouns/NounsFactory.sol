@@ -3,8 +3,8 @@
 import { GovernancePool } from "src/module/governance-pool/GovernancePool.sol";
 import { Module } from "src/module/Module.sol";
 import { ModuleConfig } from "src/module/governance-pool/ModuleConfig.sol";
-import { Ownable } from "openzeppelin/access/Ownable.sol";
-import { Clones } from "openzeppelin/proxy/Clones.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 
 pragma solidity ^0.8.19;
 
